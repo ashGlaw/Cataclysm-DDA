@@ -34,9 +34,10 @@
     { "id": "COOK", "level": 2 },
     { "id": "CUT", "level": 1 }
   ],
-  "tools": [ 
-    [ [ "surface_heat", 5, "LIST" ] ], 
+  "tools": [
+    [ [ "surface_heat", 5, "LIST" ] ],
     [ [ "frying_oil", 1, "LIST" ] ]
+  ],
   "charges": 8,
   "components": [
     [ [ "flour", 10 ] ],
@@ -2343,7 +2344,7 @@
     "components": [
       [ [ "cornmeal", 15 ] ],
       [ [ "water", 1 ], [ "water_clean", 1 ] ],
-      [ [ "cooking_oil", 2 ], [ "cooking_oil2", 2 ], [ "any_butter", 2, "LIST" ] ],
+      [ [ "cooking_oil", 1 ], [ "cooking_oil2", 1 ], [ "any_butter", 1, "LIST" ] ],
       [ [ "salt", 1 ], [ "seasoning_salt", 1 ] ]
     ]
   },
