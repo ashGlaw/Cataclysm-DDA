@@ -12,7 +12,6 @@
 
 class time_duration;
 
-
 talker_monster::talker_monster( monster *new_me )
 {
     me_mon = new_me;
@@ -178,6 +177,11 @@ bool talker_monster::get_is_alive() const
 void talker_monster::die()
 {
     me_mon->die( nullptr );
+}
+
+void talker_monster::set_all_parts_hp_cur( int set ) const
+{
+    me_mon->set_hp( set );
 }
 
 std::vector<std::string> talker_monster_const::get_topics( bool )

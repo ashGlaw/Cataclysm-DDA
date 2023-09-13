@@ -619,9 +619,9 @@
     "id": "bio_membrane",
     "copy-from": "bionic_general_npc_usable",
     "type": "BIONIC_ITEM",
-    "name": { "str": "Nictating Membrane CBM" },
+    "name": { "str": "Nictitating Membrane CBM" },
     "looks_like": "bio_int_enhancer",
-    "description": "A thin membrane that closes over the user's eyes while underwater, negating any vision penalties.",
+    "description": "Thin membranes that cover the user's eyes while underwater, negating any vision penalties.",
     "price": 450000,
     "price_postapoc": 300,
     "weight": "1 g",
@@ -935,6 +935,18 @@
     "price_postapoc": 500,
     "weight": "1 g",
     "difficulty": 4
+  },
+  {
+    "id": "bio_synlungs",
+    "copy-from": "bionic_general",
+    "type": "BIONIC_ITEM",
+    "name": { "str": "Synthetic Lungs CBM" },
+    "looks_like": "bio_int_enhancer",
+    "description": "Highly efficient synthetic lungs which replace the user's own.  After installation the user's cardio fitness will be greatly increased and will not need regular exercise to maintain but the user will need continuous power to remain breathing.  Further, they will weaken the user's immune system somewhat.",
+    "price": 800000,
+    "price_postapoc": 8000,
+    "difficulty": 7,
+    "weight": "800 g"
   },
   {
     "id": "bio_targeting",

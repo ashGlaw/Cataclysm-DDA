@@ -1,4 +1,4 @@
-# How to add magic to a mod
+# Magic, Spells, and Enchantments
 
 - [How to add magic to a mod](#how-to-add-magic-to-a-mod)
   - [Spells](#spells)
@@ -237,6 +237,7 @@ Field group | Description | Example
 `affected_body_parts` | Respond on which body part `effect_str` will occur. Doesn't respond what body part the spell will target if you damage the target, it always aim a `torso` no matter what | "affected_body_parts": [ "head" ] 
 `extra_effects` | Cast `id` spell right after the end of the main. Can cast multiple different spells at once | "extra_effects": [ <br> { <br> "id": "fireball", <br> "hit_self": false, <br> "max_level": 3 <br> }, <br> { "id": "storm_chain_1" } <br>]
 `learn_spells` | Allow user to learn this spells, when it will reach the amount of levels ("create_atomic_light": 5 means user can learn create_atomic_light, when it will reach the 5 level of the spell) | "learn_spells": { "create_atomic_light": 5, "megablast": 10 }
+`teachable` | Whether it's possible to teach this spell between characters. (Default = true) | `"teachable": true`
 `message` | The message, that will be send in log, when you cast a spell. "You cast %s!" by default | "message": "You feel refreshed."
 `sound_type`, `sound_description`, `sound_ambient`, `sound_id`, `sound_variant` | Respond for the sound that play when you use the spell. `sound_type` is one of `background`, `weather`, `music`, `movement`, `speech`, `activity`, `destructive_activity`, `alarm`, `combat`, `alert`, `order`; `sound_description` respond for the message in log, as "You hear %s" ("an explosion" by default); `sound_ambient` whether or not this is treated as an ambient sound | "sound_type": "combat", <bp>"sound_description": "a whoosh", <bp>"sound_ambient": true, <bp>"sound_id": "misc", <bp>"sound_variant": "shockwave", 
 `targeted_monster_ids` | You can target only `monster_id` | "targeted_monster_ids": [ "mon_hologram" ],
@@ -829,6 +830,7 @@ Character status value  | Description
 `SOCIAL_INTIMIDATE`     | Affects your ability to intimidate.
 `SOCIAL_LIE`            | Affects your ability to lie.
 `SOCIAL_PERSUADE`       | Affects your ability to persuade.
+`RANGE`                 | Modifies your characters range with firearms
 `READING_EXP`           | Changes the minimum you learn from each reading increment.
 `RECOIL_MODIFIER`       | Affects recoil when shooting a gun. Positive value increase the dispersion, negative decrease one.
 `REGEN_HP`              | Affects the rate you recover hp.
