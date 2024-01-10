@@ -244,7 +244,7 @@
         "pocket_type": "CONTAINER",
         "volume_encumber_modifier": 0,
         "max_contains_volume": "300 ml",
-        "max_contains_weight": "400 g",
+        "max_contains_weight": "500 g",
         "max_item_length": "14 cm",
         "moves": 100,
         "description": "Pocket for a flashlight attachment.",
@@ -421,7 +421,7 @@
         "pocket_type": "CONTAINER",
         "volume_encumber_modifier": 0,
         "max_contains_volume": "300 ml",
-        "max_contains_weight": "400 g",
+        "max_contains_weight": "500 g",
         "max_item_length": "14 cm",
         "moves": 100,
         "description": "Pocket for a flashlight attachment.",
@@ -1077,7 +1077,7 @@
     "price": 32500,
     "price_postapoc": 750,
     "to_hit": -1,
-    "material": [ "plastic", "epoxy", "plastic_pad" ],
+    "material": [ "plastic", "hard_plastic_transp", "epoxy", "plastic_pad" ],
     "symbol": "[",
     "color": "dark_gray",
     "armor": [
@@ -1104,7 +1104,7 @@
       },
       {
         "material": [
-          { "type": "plastic", "covered_by_mat": 100, "thickness": 2.0 },
+          { "type": "hard_plastic_transp", "covered_by_mat": 100, "thickness": 2.0 },
           { "type": "epoxy", "covered_by_mat": 100, "thickness": 0.5 }
         ],
         "covers": [ "eyes" ],
@@ -1115,7 +1115,7 @@
       },
       {
         "material": [
-          { "type": "plastic", "covered_by_mat": 100, "thickness": 2.0 },
+          { "type": "hard_plastic_transp", "covered_by_mat": 100, "thickness": 2.0 },
           { "type": "epoxy", "covered_by_mat": 100, "thickness": 0.5 }
         ],
         "covers": [ "mouth" ],
@@ -1138,7 +1138,7 @@
       },
       {
         "material": [
-          { "type": "plastic", "covered_by_mat": 100, "thickness": 2.0 },
+          { "type": "hard_plastic_transp", "covered_by_mat": 100, "thickness": 2.0 },
           { "type": "epoxy", "covered_by_mat": 100, "thickness": 0.5 },
           { "type": "plastic_pad", "covered_by_mat": 50, "thickness": 16 }
         ],
@@ -1175,6 +1175,7 @@
     "armor": [
       {
         "material": [
+          { "type": "hard_plastic_transp", "covered_by_mat": 40, "thickness": 2.0 },
           { "type": "plastic", "covered_by_mat": 100, "thickness": 2.0 },
           { "type": "epoxy", "covered_by_mat": 100, "thickness": 0.5 },
           { "type": "plastic_pad", "covered_by_mat": 100, "thickness": 16 }
@@ -1230,7 +1231,7 @@
     "type": "TOOL_ARMOR",
     "category": "armor",
     "name": { "str": "riding helmet" },
-    "description": "A helmet designed to protect from falls and kicks involving horses, has a small peak to protect from glare",
+    "description": "A helmet designed to protect from falls and kicks involving horses, has a small peak to protect from glare.",
     "weight": "660 g",
     "volume": "1800 ml",
     "longest_side": "28 cm",

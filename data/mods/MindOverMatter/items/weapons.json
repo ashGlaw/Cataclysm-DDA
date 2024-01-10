@@ -18,7 +18,7 @@
       "need_wielding": true,
       "target": "grenade_inferno_act",
       "msg": "You pull the pin on the grenade.",
-      "target_charges": 5,
+      "target_timer": "5 seconds",
       "active": true,
       "menu_text": "Pull pin",
       "type": "transform"
@@ -40,11 +40,15 @@
     "material": [ "steel", "nether_crystal" ],
     "symbol": "*",
     "color": "red",
-    "initial_charges": 5,
-    "max_charges": 5,
-    "turns_per_charge": 1,
+    "countdown_action": {
+      "type": "explosion",
+      "fields_radius": 5,
+      "do_flashbang": true,
+      "fields_type": "fd_fire",
+      "fields_min_intensity": 2,
+      "fields_max_intensity": 3
+    },
     "revert_to": "canister_empty",
-    "use_action": [ "GRENADE_INC_ACT" ],
     "flags": [ "ACT_IN_FIRE", "BOMB", "TRADER_AVOID", "DANGEROUS" ]
   },
   {
@@ -105,6 +109,6 @@
     "cooling_value": 5,
     "heat_per_shot": 21,
     "relic_data": { "charge_info": { "recharge_type": "periodic", "time": "2 s", "regenerate_ammo": true } },
-    "//": "Recharge time is 8 seconds due to bug #48019, making it actually 1 second. Reduce to 1 seconds if that ever gets fixed."
+    "//": "Recharge time is 2 seconds due to bug #48019, making it actually 1 second. Reduce to 1 seconds if that ever gets fixed."
   }
 ]

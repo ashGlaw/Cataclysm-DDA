@@ -133,8 +133,8 @@
     "effect": "spawn_item",
     "effect_str": "druid_quiver",
     "shape": "blast",
-    "min_duration": { "math": [ "( (u_val('spell_level', 'spell: druid_naturebow1') * 24000) + 24000)" ] },
-    "max_duration": { "math": [ "( (u_val('spell_level', 'spell: druid_naturebow1') * 24000) + 24000)" ] }
+    "min_duration": { "math": [ "( (u_spell_level('druid_naturebow1') * 24000) + 24000)" ] },
+    "max_duration": { "math": [ "( (u_spell_level('druid_naturebow1') * 24000) + 24000)" ] }
   },
   {
     "id": "druid_naturearrows1",
@@ -143,13 +143,13 @@
     "description": "This spell conjures magical arrows as part of the nature's bow spell.  It's a bug if you have it directly.",
     "valid_targets": [ "none" ],
     "flags": [ "SILENT" ],
-    "min_damage": { "math": [ "( (u_val('spell_level', 'spell: druid_naturebow1') * 3) + 15)" ] },
-    "max_damage": { "math": [ "( (u_val('spell_level', 'spell: druid_naturebow1') * 3) + 15)" ] },
+    "min_damage": { "math": [ "( (u_spell_level('druid_naturebow1') * 3) + 15)" ] },
+    "max_damage": { "math": [ "( (u_spell_level('druid_naturebow1') * 3) + 15)" ] },
     "effect": "spawn_item",
     "effect_str": "druid_naturearrows1",
     "shape": "blast",
-    "min_duration": { "math": [ "( (u_val('spell_level', 'spell: druid_naturebow1') * 24000) + 24000)" ] },
-    "max_duration": { "math": [ "( (u_val('spell_level', 'spell: druid_naturebow1') * 24000) + 24000)" ] }
+    "min_duration": { "math": [ "( (u_spell_level('druid_naturebow1') * 24000) + 24000)" ] },
+    "max_duration": { "math": [ "( (u_spell_level('druid_naturebow1') * 24000) + 24000)" ] }
   },
   {
     "id": "druid_naturebow1_plus",
@@ -190,8 +190,8 @@
     "effect": "spawn_item",
     "effect_str": "druid_quiver_plus",
     "shape": "blast",
-    "min_duration": { "math": [ "( (u_val('spell_level', 'spell: druid_naturebow1_plus') * 72000) + 360000)" ] },
-    "max_duration": { "math": [ "( (u_val('spell_level', 'spell: druid_naturebow1_plus') * 72000) + 360000)" ] }
+    "min_duration": { "math": [ "( (u_spell_level('druid_naturebow1_plus') * 72000) + 360000)" ] },
+    "max_duration": { "math": [ "( (u_spell_level('druid_naturebow1_plus') * 72000) + 360000)" ] }
   },
   {
     "id": "druid_naturearrows1_plus",
@@ -200,13 +200,13 @@
     "description": "This spell conjures magical arrows as part of the nature's bow spell.  It's a bug if you have it directly.",
     "valid_targets": [ "none" ],
     "flags": [ "SILENT" ],
-    "min_damage": { "math": [ "( (u_val('spell_level', 'spell: druid_naturebow1_plus') * 4) + 30)" ] },
-    "max_damage": { "math": [ "( (u_val('spell_level', 'spell: druid_naturebow1_plus') * 4) + 30)" ] },
+    "min_damage": { "math": [ "( (u_spell_level('druid_naturebow1_plus') * 4) + 30)" ] },
+    "max_damage": { "math": [ "( (u_spell_level('druid_naturebow1_plus') * 4) + 30)" ] },
     "effect": "spawn_item",
     "effect_str": "druid_naturearrows1",
     "shape": "blast",
-    "min_duration": { "math": [ "( (u_val('spell_level', 'spell: druid_naturebow1_plus') * 72000) + 360000)" ] },
-    "max_duration": { "math": [ "( (u_val('spell_level', 'spell: druid_naturebow1_plus') * 72000) + 360000)" ] }
+    "min_duration": { "math": [ "( (u_spell_level('druid_naturebow1_plus') * 72000) + 360000)" ] },
+    "max_duration": { "math": [ "( (u_spell_level('druid_naturebow1_plus') * 72000) + 360000)" ] }
   },
   {
     "id": "recover_fatigue",
@@ -468,7 +468,7 @@
     "description": "This spell unleashes your inner beast, growing claws & fangs to rend your foes limb from limb.  Now you know this spell like the back of your hand, and start to design your own version.",
     "valid_targets": [ "self" ],
     "effect": "spawn_item",
-    "effect_str": "aura_feral",
+    "effect_str": "aura_feral_plus",
     "shape": "blast",
     "flags": [ "SOMATIC" ],
     "components": "spell_components_feralform",
@@ -520,7 +520,7 @@
     "id": "druid_natures_commune",
     "type": "SPELL",
     "name": "Nature's Commune",
-    "description": "You concentrate on the nature around you and commune with it, improving your health and calming the nearby wildlife.  This spell may only be cast outdoors.",
+    "description": "You concentrate on the nature around you and commune with it, improving your health and calming nearby wildlife.  This spell may only be cast outdoors.",
     "valid_targets": [ "self" ],
     "effect": "effect_on_condition",
     "effect_str": "EOC_NATURE_COMMUNE",
@@ -560,14 +560,14 @@
     "effect": [
       {
         "u_add_effect": "natures_commune",
-        "duration": { "math": [ "( 300 + (u_val('spell_level', 'spell: druid_natures_commune') * 165)) " ] }
+        "duration": { "math": [ "( 300 + (u_spell_level('druid_natures_commune') * 165)) " ] }
       },
       {
         "u_add_morale": "morale_forest_unity",
         "bonus": 10,
         "max_bonus": 15,
-        "duration": { "math": [ "( 300 + (u_val('spell_level', 'spell: druid_natures_commune') * 165) )" ] },
-        "decay_start": { "math": [ "(( 300 + (u_val('spell_level', 'spell: druid_natures_commune') * 165) ) / 2)" ] }
+        "duration": { "math": [ "( 300 + (u_spell_level('druid_natures_commune') * 165) )" ] },
+        "decay_start": { "math": [ "(( 300 + (u_spell_level('druid_natures_commune') * 165) ) / 2)" ] }
       }
     ],
     "false_effect": [ { "u_message": "You must be surrounded by nature to commune with nature", "type": "bad" } ]
@@ -631,7 +631,7 @@
     "id": "druid_healing",
     "type": "SPELL",
     "name": "Restoration",
-    "description": "Magic energy, that slowly heal your body from wounds.",
+    "description": "Directed magical energy that slowly heals your body from wounds.",
     "valid_targets": [ "self" ],
     "effect": "attack",
     "effect_str": "flask_regeneration",
@@ -779,6 +779,7 @@
     "shape": "blast",
     "spell_class": "DRUID",
     "difficulty": 6,
+    "max_level": 15,
     "min_damage": 1,
     "max_damage": 1,
     "min_range": 5,
@@ -786,7 +787,6 @@
     "range_increment": 0.8,
     "base_casting_time": 250,
     "energy_source": "MANA",
-    "max_level": 15,
     "min_duration": 12000,
     "max_duration": 42000,
     "duration_increment": 2000,
@@ -921,10 +921,10 @@
     "spell_class": "DRUID",
     "energy_source": "MANA",
     "max_level": 15,
-    "min_range": { "math": [ "( (u_val('spell_level', 'spell: druid_summon_brambles') * 0.6) + 1)" ] },
-    "max_range": { "math": [ "( (u_val('spell_level', 'spell: druid_summon_brambles') * 0.6) + 1)" ] },
-    "min_aoe": { "math": [ "( (u_val('spell_level', 'spell: druid_summon_brambles') * 1.9) + 30)" ] },
-    "max_aoe": { "math": [ "( (u_val('spell_level', 'spell: druid_summon_brambles') * 1.9) + 30)" ] }
+    "min_range": { "math": [ "( (u_spell_level('druid_summon_brambles') * 0.6) + 1)" ] },
+    "max_range": { "math": [ "( (u_spell_level('druid_summon_brambles') * 0.6) + 1)" ] },
+    "min_aoe": { "math": [ "( (u_spell_level('druid_summon_brambles') * 1.9) + 30)" ] },
+    "max_aoe": { "math": [ "( (u_spell_level('druid_summon_brambles') * 1.9) + 30)" ] }
   },
   {
     "id": "druid_summon_brambles_line",
@@ -939,8 +939,8 @@
     "spell_class": "DRUID",
     "energy_source": "MANA",
     "max_level": 15,
-    "min_range": { "math": [ "( (u_val('spell_level', 'spell: druid_summon_brambles') * 1) + 1)" ] },
-    "max_range": { "math": [ "( (u_val('spell_level', 'spell: druid_summon_brambles') * 1) + 1)" ] }
+    "min_range": { "math": [ "( (u_spell_level('druid_summon_brambles') * 1) + 1)" ] },
+    "max_range": { "math": [ "( (u_spell_level('druid_summon_brambles') * 1) + 1)" ] }
   },
   {
     "id": "druid_thorn_skin",
