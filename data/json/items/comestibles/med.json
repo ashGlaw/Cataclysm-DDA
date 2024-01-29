@@ -34,12 +34,20 @@
     "symbol": "!",
     "color": "light_red",
     "container": "bottle_plastic_pill_prescription",
+    "variant_type": "drug",
+    "variants": [
+      {
+        "id": "adderall",
+        "name": { "str_sp": "Adderall" },
+        "description": "Medical-grade amphetamine salts mixed with dextroamphetamine salts, commonly prescribed to treat hyperactive attention deficits.  It suppresses the appetite, and is quite addictive."
+      }
+    ],
     "stim": 24,
     "fun": 10,
     "addiction_potential": 10,
     "addiction_type": "amphetamine",
     "flags": [ "NPC_SAFE", "IRREPLACEABLE_CONSUMABLE", "WATER_DISSOLVE", "EDIBLE_FROZEN" ],
-    "use_action": { "type": "consume_drug", "activation_message": "You take some stimulants." }
+    "use_action": { "type": "consume_drug", "activation_message": "You take some %s." }
   },
   {
     "id": "adrenaline_injector",
@@ -477,6 +485,22 @@
     "flags": [ "NO_INGEST", "NPC_SAFE", "IRREPLACEABLE_CONSUMABLE" ]
   },
   {
+    "id": "transition_contacts",
+    "type": "COMESTIBLE",
+    "comestible_type": "MED",
+    "name": { "str": "pair of transition contact lenses", "str_pl": "pairs of transition contact lenses" },
+    "description": "A pair of extended-wear contacts with soft lenses designed to be discarded after a week of use.  This high tech pair darkens in response to light, making it easier to see in bright environments.  They sit comfortably on the surface of the eye.",
+    "flags": [ "SUN_GLASSES", "NO_INGEST", "NPC_SAFE", "IRREPLACEABLE_CONSUMABLE" ],
+    "weight": "1 g",
+    "volume": "6 ml",
+    "price": "72 cent",
+    "price_postapoc": "250 cent",
+    "material": [ "plastic" ],
+    "symbol": "[",
+    "color": "cyan",
+    "use_action": [ "CONTACTS" ]
+  },
+  {
     "id": "crack",
     "type": "COMESTIBLE",
     "comestible_type": "MED",
@@ -568,6 +592,14 @@
     "symbol": "!",
     "color": "white",
     "container": "bottle_plastic_pill_prescription",
+    "variant_type": "drug",
+    "variants": [
+      {
+        "id": "diazepam",
+        "name": { "str_sp": "diazepam" },
+        "description": "A strong benzodiazepine drug used to treat muscle spasms, anxiety, seizures, and panic attacks."
+      }
+    ],
     "stim": -8,
     "healthy": -1,
     "fun": 8,
@@ -1079,6 +1111,15 @@
     "symbol": "!",
     "color": "light_red",
     "container": "bottle_plastic_pill_prescription",
+    "variant_type": "drug",
+    "variants": [
+      {
+        "id": "ambien",
+        "name": { "str_sp": "Ambien" },
+        "append": true,
+        "description": "Its generic name is zolpidem tartarate."
+      }
+    ],
     "stim": -8,
     "fun": 5,
     "flags": [ "IRREPLACEABLE_CONSUMABLE", "WATER_DISSOLVE", "EDIBLE_FROZEN" ],
@@ -1193,6 +1234,8 @@
     "symbol": "!",
     "color": "light_green",
     "container": "bottle_plastic_pill_prescription",
+    "variant_type": "drug",
+    "variants": [ { "id": "prozac", "name": { "str_sp": "Prozac" }, "append": true, "description": "Its generic name is fluoxetine." } ],
     "stim": -5,
     "flags": [ "IRREPLACEABLE_CONSUMABLE", "EDIBLE_FROZEN" ],
     "addiction_potential": 5,
@@ -1270,6 +1313,15 @@
     "symbol": "!",
     "color": "light_red",
     "container": "bottle_plastic_pill_prescription",
+    "variant_type": "drug",
+    "variants": [
+      {
+        "id": "thorazine",
+        "name": { "str_sp": "Thorazine" },
+        "append": true,
+        "description": "Its generic name is chlorpromazine."
+      }
+    ],
     "stim": -30,
     "flags": [ "IRREPLACEABLE_CONSUMABLE", "WATER_DISSOLVE", "EDIBLE_FROZEN" ],
     "use_action": [ "THORAZINE" ]
@@ -1545,6 +1597,15 @@
     "symbol": "!",
     "color": "cyan",
     "container": "bottle_plastic_pill_prescription",
+    "variant_type": "drug",
+    "variants": [
+      {
+        "id": "xanax",
+        "name": { "str_sp": "Xanax" },
+        "append": true,
+        "description": "An anti-anxiety agent with a powerful sedative effect.  May cause dissociation and loss of memory.  It is dangerously addictive, and withdrawal from regular use should be gradual."
+      }
+    ],
     "stim": -4,
     "healthy": -2,
     "fun": 20,

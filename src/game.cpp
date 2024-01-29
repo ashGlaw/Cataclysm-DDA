@@ -1,13 +1,11 @@
 #include "game.h"
 
 #include <functional>
-#include <clocale>
 #include <algorithm>
 #include <bitset>
 #include <chrono>
 #include <climits>
 #include <cmath>
-#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -22,7 +20,6 @@
 #include <memory>
 #include <numeric>
 #include <queue>
-#include <ratio>
 #include <set>
 #include <sstream>
 #include <string>
@@ -52,7 +49,6 @@
 #include "bodypart.h"
 #include "butchery_requirements.h"
 #include "cached_options.h"
-#include "cata_assert.h"
 #include "cata_scope_helpers.h"
 #include "cata_utility.h"
 #include "cata_variant.h"
@@ -84,7 +80,6 @@
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
-#include "explosion.h"
 #include "faction.h"
 #include "field.h"
 #include "field_type.h"
@@ -97,10 +92,10 @@
 #include "gates.h"
 #include "get_version.h"
 #include "harvest.h"
-#include "help.h"
 #include "iexamine.h"
 #include "init.h"
 #include "input.h"
+#include "input_context.h"
 #include "inventory.h"
 #include "item.h"
 #include "item_category.h"
@@ -133,10 +128,8 @@
 #include "messages.h"
 #include "mission.h"
 #include "mod_manager.h"
-#include "monattack.h"
 #include "monexamine.h"
 #include "monstergenerator.h"
-#include "morale_types.h"
 #include "move_mode.h"
 #include "mtype.h"
 #include "npc.h"
@@ -170,7 +163,6 @@
 #include "stats_tracker.h"
 #include "string_formatter.h"
 #include "string_input_popup.h"
-#include "submap.h"
 #include "talker.h"
 #include "text_snippets.h"
 #include "tileray.h"
@@ -196,8 +188,6 @@
 #if defined(TILES)
 #include "sdl_utils.h"
 #endif // TILES
-
-class computer;
 
 static const activity_id ACT_BLEED( "ACT_BLEED" );
 static const activity_id ACT_BUTCHER( "ACT_BUTCHER" );
@@ -770,6 +760,8 @@ void game::setup()
 
     calendar::set_eternal_night( ::get_option<std::string>( "ETERNAL_TIME_OF_DAY" ) == "night" );
     calendar::set_eternal_day( ::get_option<std::string>( "ETERNAL_TIME_OF_DAY" ) == "day" );
+
+    calendar::set_location( ::get_option<float>( "LATITUDE" ), ::get_option<float>( "LONGITUDE" ) );
 
     weather.weather_id = WEATHER_CLEAR;
     // Weather shift in 30
@@ -2028,6 +2020,7 @@ int game::inventory_item_menu( item_location locThisItem,
         bool exit = false;
         bool first_execution = true;
         static int lang_version = detail::get_current_language_version();
+        catacurses::window w_info;
         do {
             //lang check here is needed to redraw the menu when using "Toggle language to English" option
             if( first_execution || lang_version != detail::get_current_language_version() ) {
@@ -2116,8 +2109,6 @@ int game::inventory_item_menu( item_location locThisItem,
 
                 data = item_info_data( oThisItem.tname(), oThisItem.type_name(), vThisItem, vDummy, iScrollPos );
                 data.without_getch = true;
-
-                catacurses::window w_info;
 
                 ui = std::make_unique<ui_adaptor>();
                 ui->on_screen_resize( [&]( ui_adaptor & ui ) {
@@ -5328,8 +5319,7 @@ bool game::spawn_npc( const tripoint &p, const string_id<npc_template> &npc_clas
                       std::vector<trait_id> &traits, std::optional<time_duration> lifespan )
 {
     if( !unique_id.empty() && g->unique_npc_exists( unique_id ) ) {
-        get_avatar().add_msg_debug_if_player( debugmode::DF_NPC, "NPC with unique id %s already exists.",
-                                              unique_id );
+        add_msg_debug( debugmode::DF_NPC, "NPC with unique id %s already exists.", unique_id );
         return false;
     }
     shared_ptr_fast<npc> tmp = make_shared_fast<npc>();
@@ -6298,6 +6288,7 @@ void game::peek( const tripoint &p )
     const bool is_standup_peek = is_same_pos && u.is_crouching();
     tripoint center = p;
     m.build_map_cache( p.z );
+    m.update_visibility_cache( p.z );
 
     look_around_result result;
     const look_around_params looka_params = { true, center, center, false, false, true, true };
@@ -6315,6 +6306,7 @@ void game::peek( const tripoint &p )
         avatar_action::plthrow( u, loc, p );
     }
     m.invalidate_map_cache( p.z );
+    m.invalidate_visibility_cache();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -6781,23 +6773,26 @@ static void zones_manager_shortcuts( const catacurses::window &w_info, faction_i
     shortcut_print( w_info, point( tmpx, 1 ), c_white, c_light_green, _( "<D>isable" ) );
 
     tmpx = 1;
-    tmpx += shortcut_print( w_info, point( tmpx, 2 ), c_white, c_light_green,
-                            _( "<Z>-Enable personal" ) ) + 2;
     shortcut_print( w_info, point( tmpx, 2 ), c_white, c_light_green,
+                    _( "<T>-Toggle zone display" ) );
+
+    tmpx += shortcut_print( w_info, point( tmpx, 3 ), c_white, c_light_green,
+                            _( "<Z>-Enable personal" ) ) + 2;
+    shortcut_print( w_info, point( tmpx, 3 ), c_white, c_light_green,
                     _( "<X>-Disable personal" ) );
 
     tmpx = 1;
-    tmpx += shortcut_print( w_info, point( tmpx, 3 ), c_white, c_light_green,
+    tmpx += shortcut_print( w_info, point( tmpx, 4 ), c_white, c_light_green,
                             _( "<+-> Move up/down" ) ) + 2;
-    shortcut_print( w_info, point( tmpx, 3 ), c_white, c_light_green, _( "<Enter>-Edit" ) );
+    shortcut_print( w_info, point( tmpx, 4 ), c_white, c_light_green, _( "<Enter>-Edit" ) );
 
     tmpx = 1;
-    tmpx += shortcut_print( w_info, point( tmpx, 4 ), c_white, c_light_green,
+    tmpx += shortcut_print( w_info, point( tmpx, 5 ), c_white, c_light_green,
                             _( "<S>how all / hide distant" ) ) + 2;
-    shortcut_print( w_info, point( tmpx, 4 ), c_white, c_light_green, _( "<M>ap" ) );
+    shortcut_print( w_info, point( tmpx, 5 ), c_white, c_light_green, _( "<M>ap" ) );
 
     if( debug_mode ) {
-        shortcut_print( w_info, point( 1, 5 ), c_light_red, c_light_green,
+        shortcut_print( w_info, point( 1, 6 ), c_light_red, c_light_green,
                         string_format( _( "Shown <F>action: %s" ), faction.str() ) );
     }
 
@@ -6852,7 +6847,7 @@ void game::zones_manager()
 
     u.view_offset = tripoint_zero;
 
-    const int zone_ui_height = 13;
+    const int zone_ui_height = 14;
     const int zone_options_height = debug_mode ? 6 : 7;
 
     const int width = 45;
@@ -6905,6 +6900,7 @@ void game::zones_manager()
     ctxt.register_action( "SHOW_ZONE_ON_MAP" );
     ctxt.register_action( "ENABLE_ZONE" );
     ctxt.register_action( "DISABLE_ZONE" );
+    ctxt.register_action( "TOGGLE_ZONE_DISPLAY" );
     ctxt.register_action( "ENABLE_PERSONAL_ZONES" );
     ctxt.register_action( "DISABLE_PERSONAL_ZONES" );
     ctxt.register_action( "SHOW_ALL_ZONES" );
@@ -7177,12 +7173,30 @@ void game::zones_manager()
                     break;
                 }
 
+                int vehicle_zones_pre = 0;
+                for( zone_manager::ref_zone_data zone : get_zones() ) {
+                    if( zone.get().get_is_vehicle() ) {
+                        vehicle_zones_pre++;
+                    }
+                }
+
                 // TODO: fix point types
                 mgr.add( name, id, get_player_character().get_faction()->id, false, true,
                          position->first, position->second, options, false );
 
                 zones = get_zones();
                 active_index = zone_cnt - 1;
+
+                int vehicle_zones_post = 0;
+                for( zone_manager::ref_zone_data zone : zones ) {
+                    if( zone.get().get_is_vehicle() ) {
+                        vehicle_zones_post++;
+                    }
+                }
+
+                if( vehicle_zones_post == vehicle_zones_pre ) {
+                    active_index -= vehicle_zones_post;
+                }
 
                 stuff_changed = true;
             } while( false );
@@ -7223,6 +7237,15 @@ void game::zones_manager()
                          position->first, position->second, options, true );
                 zones = get_zones();
                 active_index = zone_cnt - 1;
+
+                int vehicle_zones = 0;
+                for( zone_manager::ref_zone_data zone : zones ) {
+                    if( zone.get().get_is_vehicle() ) {
+                        vehicle_zones++;
+                    }
+                }
+
+                active_index -= vehicle_zones;
 
                 stuff_changed = true;
             } while( false );
@@ -7397,6 +7420,11 @@ void game::zones_manager()
                 zones[active_index].get().set_enabled( false );
 
                 stuff_changed = true;
+
+            } else if( action == "TOGGLE_ZONE_DISPLAY" ) {
+                zones[active_index].get().toggle_display();
+                stuff_changed = true;
+
             } else if( action == "ENABLE_PERSONAL_ZONES" ) {
                 bool zones_changed = false;
 
@@ -11855,7 +11883,7 @@ void game::vertical_move( int movez, bool force, bool peeking )
 
     if( !force && movez == -1 && !here.has_flag( ter_furn_flag::TFLAG_GOES_DOWN, u.pos() ) &&
         !u.is_underwater() && !here.has_flag( ter_furn_flag::TFLAG_NO_FLOOR_WATER, u.pos() ) &&
-        ( u.has_effect( effect_gliding ) && get_map().tr_at( u.pos() ) != tr_ledge ) ) {
+        !u.has_effect( effect_gliding ) ) {
         if( wall_cling && !here.has_floor_or_support( u.pos() ) ) {
             climbing = true;
             climbing_aid = climbing_aid_ability_WALL_CLING;
