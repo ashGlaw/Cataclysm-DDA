@@ -229,6 +229,7 @@ std::string filter_name( debug_filter value )
         case DF_ANATOMY_BP: return "DF_ANATOMY_BP";
         case DF_AVATAR: return "DF_AVATAR";
         case DF_BALLISTIC: return "DF_BALLISTIC";
+        case DF_CAMPS: return "DF_CAMPS";
         case DF_CHARACTER: return "DF_CHARACTER";
         case DF_CHAR_CALORIES: return "DF_CHAR_CALORIES";
         case DF_CHAR_HEALTH: return "DF_CHAR_HEALTH";
@@ -1546,6 +1547,14 @@ std::string game_info::operating_system()
 }
 
 #if !defined(EMSCRIPTEN) && !defined(__CYGWIN__) && !defined (__ANDROID__) && ( defined (__linux__) || defined(unix) || defined(__unix__) || defined(__unix) || ( defined(__APPLE__) && defined(__MACH__) ) || defined(CATA_IS_ON_BSD) ) // linux; unix; MacOs; BSD
+class FILEDeleter
+{
+    public:
+        void operator()( FILE *f ) const noexcept {
+            pclose( f );
+        }
+};
+
 /** Execute a command with the shell by using `popen()`.
  * @param command The full command to execute.
  * @note The output buffer is limited to 512 characters.
@@ -1556,7 +1565,7 @@ static std::string shell_exec( const std::string &command )
     std::vector<char> buffer( 512 );
     std::string output;
     try {
-        std::unique_ptr<FILE, decltype( &pclose )> pipe( popen( command.c_str(), "r" ), pclose );
+        std::unique_ptr<FILE, FILEDeleter> pipe( popen( command.c_str(), "r" ) );
         if( pipe ) {
             while( fgets( buffer.data(), buffer.size(), pipe.get() ) != nullptr ) {
                 output += buffer.data();

@@ -1,48 +1,63 @@
 #include "condition.h"
 
+#include <algorithm>
+#include <array>
 #include <climits>
+#include <cmath>
 #include <cstddef>
 #include <functional>
 #include <map>
 #include <memory>
-#include <new>
 #include <optional>
+#include <queue>
 #include <set>
+#include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "action.h"
 #include "avatar.h"
+#include "bodypart.h"
 #include "calendar.h"
 #include "cata_utility.h"
 #include "character.h"
 #include "coordinates.h"
-#include "dialogue.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "dialogue_helpers.h"
+#include "effect.h"
+#include "effect_on_condition.h"
 #include "enum_conversions.h"
+#include "enum_traits.h"
+#include "faction.h"
 #include "field.h"
 #include "flag.h"
+#include "flexbuffer_json-inl.h"
+#include "flexbuffer_json.h"
 #include "game.h"
 #include "generic_factory.h"
 #include "global_vars.h"
 #include "item.h"
 #include "item_category.h"
-#include "json.h"
-#include "kill_tracker.h"
+#include "item_location.h"
+#include "json_error.h"
 #include "line.h"
 #include "map.h"
+#include "map_iterator.h"
 #include "mapdata.h"
 #include "martialarts.h"
 #include "math_parser.h"
-#include "math_parser_shim.h"
 #include "mission.h"
 #include "mtype.h"
 #include "mutation.h"
 #include "npc.h"
+#include "options.h"
+#include "output.h"
 #include "overmap.h"
 #include "overmapbuffer.h"
 #include "point.h"
@@ -50,16 +65,24 @@
 #include "profession.h"
 #include "ranged.h"
 #include "recipe_groups.h"
+#include "rng.h"
+#include "string_formatter.h"
 #include "talker.h"
+#include "translation.h"
+#include "translations.h"
 #include "type_id.h"
 #include "units.h"
 #include "vehicle.h"
+#include "viewer.h"
 #include "vpart_position.h"
+#include "weather.h"
 #include "widget.h"
 #include "worldfactory.h"
 
+class Creature;
 class basecamp;
 class recipe;
+struct mapgen_arguments;
 
 static const efftype_id effect_currently_busy( "currently_busy" );
 
@@ -259,49 +282,98 @@ str_or_var get_str_or_var( const JsonValue &jv, std::string_view member, bool re
     if( jv.test_string() ) {
         ret_val.str_val = jv.get_string();
     } else if( jv.test_object() ) {
-        const JsonObject &jo = jv.get_object();
-        if( jo.has_member( "mutator" ) ) {
-            // if we have a mutator then process that here.
-            ret_val.function = conditional_t::get_get_string( jo );
-        } else {
-            ret_val.var_val = read_var_info( jo );
-            ret_val.default_val = default_val;
-        }
+        ret_val = get_str_or_var( jv.get_object(), member, default_val );
     } else if( required ) {
         jv.throw_error( "No valid value for " + std::string( member ) );
     } else {
         ret_val.str_val = default_val;
     }
     return ret_val;
+}
+
+str_or_var get_str_or_var( const JsonObject &jo, std::string_view,
+                           std::string_view default_val )
+{
+    str_or_var ret_val;
+    if( jo.has_member( "mutator" ) ) {
+        // if we have a mutator then process that here.
+        ret_val.function = conditional_t::get_get_string( jo );
+    } else {
+        ret_val.var_val = read_var_info( jo );
+        ret_val.default_val = default_val;
+    }
+    return ret_val;
+}
+
+static bool json_object_read( const JsonObject &jo, translation &v )
+{
+    try {
+        v.deserialize( jo );
+        return true;
+    } catch( const JsonError & ) {
+        return false;
+    }
 }
 
 translation_or_var get_translation_or_var( const JsonValue &jv, std::string_view member,
         bool required, const translation &default_val )
 {
     translation_or_var ret_val;
-    translation str_val;
-    if( jv.read( str_val ) ) {
-        ret_val.str_val = str_val;
-    } else if( jv.test_object() ) {
-        const JsonObject &jo = jv.get_object();
-        if( jo.has_member( "mutator" ) ) {
-            // if we have a mutator then process that here.
-            ret_val.function = conditional_t::get_get_translation( jo );
-        } else {
-            ret_val.var_val = read_var_info( jo );
-            ret_val.default_val = default_val;
-        }
-    } else if( required ) {
-        jv.throw_error( "No valid value for " + std::string( member ) );
+    if( jv.test_object() ) {
+        ret_val = get_translation_or_var( jv.get_object(), member, default_val );
     } else {
-        ret_val.str_val = default_val;
+        translation str_val;
+        if( jv.read( str_val ) ) {
+            ret_val.str_val = str_val;
+        } else if( required ) {
+            jv.throw_error( "No valid value for " + std::string( member ) );
+        } else {
+            ret_val.str_val = default_val;
+        }
     }
     return ret_val;
 }
 
-tripoint_abs_ms get_tripoint_from_var( std::optional<var_info> var, dialogue const &d )
+translation_or_var get_translation_or_var( const JsonObject &jo, std::string_view,
+        const translation &default_val )
 {
-    tripoint_abs_ms target_pos = get_map().getglobal( d.actor( false )->pos() );
+    translation_or_var ret_val;
+    translation str_val;
+    if( json_object_read( jo, str_val ) ) {
+        ret_val.str_val = str_val;
+    } else {
+        if( jo.has_member( "mutator" ) ) {
+            // if we have a mutator then process that here.
+            ret_val.function = conditional_t::get_get_translation( jo );
+        } else {
+            ret_val.var_val = read_translation_var_info( jo );
+            ret_val.default_val = default_val;
+        }
+    }
+    return ret_val;
+}
+
+str_translation_or_var get_str_translation_or_var(
+    const JsonValue &jv, std::string_view member, bool required,
+    std::string_view str_default_val, const translation &translation_default_val )
+{
+    str_translation_or_var ret_val;
+    if( jv.test_object() ) {
+        const JsonObject &jo = jv.get_object();
+        if( jo.get_bool( "i18n", false ) ) {
+            ret_val.val = get_translation_or_var( jo, member, translation_default_val );
+        } else {
+            ret_val.val = get_str_or_var( jo, member, str_default_val );
+        }
+    } else {
+        ret_val.val = get_str_or_var( jv, member, required, str_default_val );
+    }
+    return ret_val;
+}
+
+tripoint_abs_ms get_tripoint_from_var( std::optional<var_info> var, dialogue const &d, bool is_npc )
+{
+    tripoint_abs_ms target_pos = get_map().getglobal( d.actor( is_npc )->pos() );
     if( var.has_value() ) {
         std::string value = read_var_value( var.value(), d );
         if( !value.empty() ) {
@@ -311,19 +383,37 @@ tripoint_abs_ms get_tripoint_from_var( std::optional<var_info> var, dialogue con
     return target_pos;
 }
 
-var_info read_var_info( const JsonObject &jo )
+template<class T>
+static T abstract_read_var_info_no_translation( std::string && );
+
+template<>
+std::string abstract_read_var_info_no_translation( std::string &&s )
 {
-    std::string default_val;
+    return std::move( s );
+}
+
+template<>
+translation abstract_read_var_info_no_translation( std::string &&s )
+{
+    return no_translation( s );
+}
+
+template<class T>
+static abstract_var_info<T> abstract_read_var_info( const JsonObject &jo )
+{
+    T default_val;
     dbl_or_var empty;
     var_type type;
     std::string name;
-    if( jo.has_string( "default_str" ) ) {
-        default_val = jo.get_string( "default_str" );
+    if( jo.has_member( "default_str" ) ) {
+        jo.read( "default_str", default_val );
     } else if( jo.has_string( "default" ) ) {
-        default_val = std::to_string( to_turns<int>( read_from_json_string<time_duration>
-                                      ( jo.get_member( "default" ), time_duration::units ) ) );
+        std::string tmp = std::to_string( to_turns<int>( read_from_json_string<time_duration>
+                                          ( jo.get_member( "default" ), time_duration::units ) ) );
+        default_val = abstract_read_var_info_no_translation<T>( std::move( tmp ) );
     } else if( jo.has_float( "default" ) ) {
-        default_val = std::to_string( jo.get_float( "default" ) );
+        std::string tmp = std::to_string( jo.get_float( "default" ) );
+        default_val = abstract_read_var_info_no_translation<T>( std::move( tmp ) );
     }
 
     if( jo.has_string( "var_name" ) ) {
@@ -371,11 +461,21 @@ var_info read_var_info( const JsonObject &jo )
     } else {
         jo.throw_error( "Invalid variable type." );
     }
-    return var_info( type, name, default_val );
+    return abstract_var_info<T>( type, name, default_val );
 }
 
-void write_var_value( var_type type, const std::string &name, talker *talk, dialogue *d,
-                      const std::string &value )
+var_info read_var_info( const JsonObject &jo )
+{
+    return abstract_read_var_info<std::string>( jo );
+}
+
+translation_var_info read_translation_var_info( const JsonObject &jo )
+{
+    return abstract_read_var_info<translation>( jo );
+}
+
+void write_var_value( var_type type, const std::string &name, dialogue *d,
+                      const std::string &value, int call_depth )
 {
     global_variables &globvars = get_globals();
     std::string ret;
@@ -387,11 +487,27 @@ void write_var_value( var_type type, const std::string &name, talker *talk, dial
         case var_type::var:
             ret = d->get_value( name );
             vinfo = process_variable( ret );
-            write_var_value( vinfo.type, vinfo.name, talk, d, value );
+            if( call_depth > 1000 ) {
+                debugmsg( "Possible infinite loop detected: var_val points to itself or forms a cycle.  %s->%s %s",
+                          name, vinfo.name, d->get_callstack() );
+            } else {
+                write_var_value( vinfo.type, vinfo.name, d, value,
+                                 call_depth + 1 );
+            }
             break;
         case var_type::u:
+            if( d->has_alpha ) {
+                d->actor( false )->set_value( name, value );
+            } else {
+                debugmsg( "Tried to use an invalid alpha talker.  %s", d->get_callstack() );
+            }
+            break;
         case var_type::npc:
-            talk->set_value( name, value );
+            if( d->has_beta ) {
+                d->actor( true )->set_value( name, value );
+            } else {
+                debugmsg( "Tried to use an invalid beta talker.  %s", d->get_callstack() );
+            }
             break;
         case var_type::faction:
             debugmsg( "Not implemented yet." );
@@ -408,11 +524,11 @@ void write_var_value( var_type type, const std::string &name, talker *talk, dial
     }
 }
 
-void write_var_value( var_type type, const std::string &name, talker *talk, dialogue *d,
+void write_var_value( var_type type, const std::string &name, dialogue *d,
                       double value )
 {
     // NOLINTNEXTLINE(cata-translate-string-literal)
-    write_var_value( type, name, talk, d, string_format( "%g", value ) );
+    write_var_value( type, name, d, string_format( "%g", value ) );
 }
 
 static bodypart_id get_bp_from_str( const std::string &ctxt )
@@ -490,6 +606,15 @@ conditional_t::func f_has_trait( const JsonObject &jo, std::string_view member, 
     str_or_var trait_to_check = get_str_or_var( jo.get_member( member ), member, true );
     return [trait_to_check, is_npc]( dialogue const & d ) {
         return d.actor( is_npc )->has_trait( trait_id( trait_to_check.evaluate( d ) ) );
+    };
+}
+
+conditional_t::func f_is_trait_purifiable( const JsonObject &jo, std::string_view member,
+        bool is_npc )
+{
+    str_or_var trait_to_check = get_str_or_var( jo.get_member( member ), member, true );
+    return [trait_to_check, is_npc]( dialogue const & d ) {
+        return d.actor( is_npc )->is_trait_purifiable( trait_id( trait_to_check.evaluate( d ) ) );
     };
 }
 
@@ -751,6 +876,45 @@ conditional_t::func f_has_items( const JsonObject &jo, const std::string_view me
     }
 }
 
+conditional_t::func f_has_items_sum( const JsonObject &jo, const std::string_view member,
+                                     bool is_npc )
+{
+    std::vector<std::pair<str_or_var, dbl_or_var>> item_and_amount;
+
+    for( const JsonObject jsobj : jo.get_array( member ) ) {
+        const str_or_var item = get_str_or_var( jsobj.get_member( "item" ), "item", true );
+        const dbl_or_var amount = get_dbl_or_var( jsobj, "amount", true, 1 );
+        item_and_amount.emplace_back( item, amount );
+    }
+    return [item_and_amount, is_npc]( dialogue & d ) {
+        add_msg_debug( debugmode::DF_TALKER, "using _has_items_sum:" );
+
+        itype_id item_to_find;
+        double percent = 0.0f;
+        double count_desired;
+        double count_present;
+        double charges_present;
+        double total_present;
+        for( const auto &pair : item_and_amount ) {
+            item_to_find = itype_id( pair.first.evaluate( d ) );
+            count_desired = pair.second.evaluate( d );
+            count_present = d.actor( is_npc )->get_amount( item_to_find );
+            charges_present = d.actor( is_npc )->charges_of( item_to_find );
+            total_present = std::max( count_present, charges_present );
+            percent += total_present / count_desired;
+
+            add_msg_debug( debugmode::DF_TALKER,
+                           "item: %s, count_desired: %f, count_present: %f, charges_present: %f, total_present: %f, percent: %f",
+                           item_to_find.str(), count_desired, count_present, charges_present, total_present, percent );
+
+            if( percent >= 1 ) {
+                return true;
+            }
+        }
+        return false;
+    };
+}
+
 conditional_t::func f_has_item_with_flag( const JsonObject &jo, std::string_view member,
         bool is_npc )
 {
@@ -851,15 +1015,15 @@ conditional_t::func f_need( const JsonObject &jo, std::string_view member, bool 
         dov = get_dbl_or_var( jo, "amount" );
     } else if( jo.has_string( "level" ) ) {
         const std::string &level = jo.get_string( "level" );
-        auto flevel = fatigue_level_strs.find( level );
-        if( flevel != fatigue_level_strs.end() ) {
+        auto flevel = sleepiness_level_strs.find( level );
+        if( flevel != sleepiness_level_strs.end() ) {
             dov.min.dbl_val = static_cast<int>( flevel->second );
         }
     }
     return [need, dov, is_npc]( dialogue & d ) {
         const talker *actor = d.actor( is_npc );
         int amount = dov.evaluate( d );
-        return ( actor->get_fatigue() > amount && need.evaluate( d ) == "fatigue" ) ||
+        return ( actor->get_sleepiness() > amount && need.evaluate( d ) == "sleepiness" ) ||
                ( actor->get_hunger() > amount && need.evaluate( d ) == "hunger" ) ||
                ( actor->get_thirst() > amount && need.evaluate( d ) == "thirst" );
     };
@@ -883,9 +1047,10 @@ conditional_t::func f_at_om_location( const JsonObject &jo, std::string_view mem
             // TODO: legacy check to be removed once primitive field camp OMTs have been purged
             return omt_str.find( "faction_base_camp" ) != std::string::npos;
         } else if( location_value == "FACTION_CAMP_START" ) {
-            return !recipe_group::get_recipes_by_id( "all_faction_base_types", omt_str ).empty();
+            const std::optional<mapgen_arguments> *maybe_args = overmap_buffer.mapgen_args( omt_pos );
+            return !recipe_group::get_recipes_by_id( "all_faction_base_types", omt_ter, maybe_args ).empty();
         } else {
-            return oter_no_dir( omt_ter ) == location_value;
+            return oter_no_dir_or_connections( omt_ter ) == location_value;
         }
     };
 }
@@ -900,6 +1065,7 @@ conditional_t::func f_near_om_location( const JsonObject &jo, std::string_view m
         for( const tripoint_abs_omt &curr_pos : points_in_radius( omt_pos,
                 range.evaluate( d ) ) ) {
             const oter_id &omt_ter = overmap_buffer.ter( curr_pos );
+            const std::optional<mapgen_arguments> *maybe_args = overmap_buffer.mapgen_args( omt_pos );
             const std::string &omt_str = omt_ter.id().str();
             std::string location_value = location.evaluate( d );
 
@@ -913,10 +1079,10 @@ conditional_t::func f_near_om_location( const JsonObject &jo, std::string_view m
                     return true;
                 }
             } else if( location_value  == "FACTION_CAMP_START" &&
-                       !recipe_group::get_recipes_by_id( "all_faction_base_types", omt_str ).empty() ) {
+                       !recipe_group::get_recipes_by_id( "all_faction_base_types", omt_ter, maybe_args ).empty() ) {
                 return true;
             } else {
-                if( oter_no_dir( omt_ter ) == location_value ) {
+                if( oter_no_dir_or_connections( omt_ter ) == location_value ) {
                     return true;
                 }
             }
@@ -978,6 +1144,17 @@ conditional_t::func f_npc_role_nearby( const JsonObject &jo, std::string_view me
                    ( rl_dist( d.actor( false )->pos(), guy.pos() ) <= 48 );
         } );
         return !available.empty();
+    };
+}
+
+conditional_t::func f_npc_is_travelling( bool is_npc )
+{
+    return [is_npc]( dialogue const & d ) {
+        const Character *traveller = d.actor( is_npc )->get_character();
+        if( !traveller ) {
+            return false;
+        }
+        return !traveller->omt_path.empty();
     };
 }
 
@@ -1121,6 +1298,16 @@ conditional_t::func f_is_alive( bool is_npc )
     };
 }
 
+conditional_t::func f_exists( bool is_npc )
+{
+    return [is_npc]( dialogue const & d ) {
+        if( ( is_npc && !d.has_beta ) || ( !is_npc && !d.has_alpha ) ) {
+            return false;
+        } else {
+            return true;
+        }
+    };
+}
 conditional_t::func f_is_avatar( bool is_npc )
 {
     return [is_npc]( dialogue const & d ) {
@@ -1172,6 +1359,20 @@ conditional_t::func f_player_see( bool is_npc )
         } else {
             return get_player_view().sees( d.actor( is_npc )->pos() );
         }
+    };
+}
+
+conditional_t::func f_has_alpha()
+{
+    return []( dialogue const & d ) {
+        return d.has_alpha;
+    };
+}
+
+conditional_t::func f_has_beta()
+{
+    return []( dialogue const & d ) {
+        return d.has_beta;
     };
 }
 
@@ -1296,6 +1497,33 @@ conditional_t::func f_npc_train_spells( bool is_npc )
 {
     return [is_npc]( dialogue const & d ) {
         return !d.actor( is_npc )->spells_offered_to( *d.actor( !is_npc ) ).empty();
+    };
+}
+
+conditional_t::func f_follower_present( const JsonObject &jo, std::string_view member )
+{
+    const std::string &var_name = jo.get_string( std::string( member ) );
+    return [var_name]( dialogue const & d ) {
+        npc *npc_to_check = nullptr;
+        for( npc &guy : g->all_npcs() ) {
+            if( guy.myclass.str() == var_name ) {
+                npc_to_check = &guy;
+                break;
+            }
+        }
+        npc *d_npc = d.actor( true )->get_npc();
+        if( npc_to_check == nullptr || d_npc == nullptr ) {
+            return false;
+        }
+        const std::set<character_id> followers = g->get_follower_list();
+        if( !std::any_of( followers.begin(), followers.end(), [&npc_to_check]( const character_id & id ) {
+        return id == npc_to_check->getID();
+        } ) ||
+        !npc_to_check->is_following() ) {
+            return false;
+        }
+        return rl_dist( npc_to_check->pos_bub(), d_npc->pos_bub() ) < 5 &&
+               get_map().clear_path( npc_to_check->pos_bub(), d_npc->pos_bub(), 5, 0, 100 );
     };
 }
 
@@ -1442,7 +1670,7 @@ conditional_t::func f_query_tile( const JsonObject &jo, std::string_view member,
         }
         if( loc.has_value() ) {
             tripoint_abs_ms pos_global = get_map().getglobal( *loc );
-            write_var_value( target_var.type, target_var.name, d.actor( target_var.type == var_type::npc ), &d,
+            write_var_value( target_var.type, target_var.name, &d,
                              pos_global.to_string() );
         }
         return loc.has_value();
@@ -1479,11 +1707,32 @@ conditional_t::func f_map_ter_furn_with_flag( const JsonObject &jo, std::string_
         terrain = false;
     }
     return [terrain, furn_type, loc_var]( dialogue const & d ) {
-        tripoint loc = get_map().getlocal( get_tripoint_from_var( loc_var, d ) );
+        tripoint loc = get_map().getlocal( get_tripoint_from_var( loc_var, d, false ) );
         if( terrain ) {
             return get_map().ter( loc )->has_flag( furn_type.evaluate( d ) );
         } else {
             return get_map().furn( loc )->has_flag( furn_type.evaluate( d ) );
+        }
+    };
+}
+
+conditional_t::func f_map_ter_furn_id( const JsonObject &jo, std::string_view member )
+{
+    str_or_var furn_type = get_str_or_var( jo.get_member( member ), member, true );
+    var_info loc_var = read_var_info( jo.get_object( "loc" ) );
+
+    return [member, furn_type, loc_var]( dialogue const & d ) {
+        tripoint loc = get_map().getlocal( get_tripoint_from_var( loc_var, d, false ) );
+        if( member == "map_terrain_id" ) {
+            return get_map().ter( loc ) == ter_id( furn_type.evaluate( d ) );
+        } else if( member == "map_furniture_id" ) {
+            return get_map().furn( loc ) == furn_id( furn_type.evaluate( d ) );
+        } else if( member == "map_field_id" ) {
+            const field &fields_here = get_map().field_at( loc );
+            return !!fields_here.find_field( field_type_id( furn_type.evaluate( d ) ) );
+        } else {
+            debugmsg( "Invalid map id: %s", member );
+            return false;
         }
     };
 }
@@ -1557,6 +1806,19 @@ conditional_t::func f_get_condition( const JsonObject &jo, std::string_view memb
     };
 }
 
+conditional_t::func f_test_eoc( const JsonObject &jo, std::string_view member )
+{
+    str_or_var eocToTest = get_str_or_var( jo.get_member( member ), member, true );
+    return [eocToTest]( dialogue & d ) {
+        effect_on_condition_id tested( eocToTest.evaluate( d ) );
+        if( !tested.is_valid() ) {
+            debugmsg( "Invalid eoc id: %s", eocToTest.evaluate( d ) );
+            return false;
+        }
+        return tested->condition( d );
+    };
+}
+
 conditional_t::func f_has_ammo()
 {
     return []( dialogue & d ) {
@@ -1582,7 +1844,17 @@ conditional_t::func f_math( const JsonObject &jo, const std::string_view member 
 conditional_t::func f_u_has_camp()
 {
     return []( dialogue const & ) {
-        return !get_player_character().camps.empty();
+        for( const tripoint_abs_omt &camp_tripoint : get_player_character().camps ) {
+            std::optional<basecamp *> camp = overmap_buffer.find_camp( camp_tripoint.xy() );
+            if( !camp ) {
+                continue;
+            }
+            basecamp *bcp = *camp;
+            if( bcp->get_owner() == get_player_character().get_faction()->id ) {
+                return true;
+            }
+        }
+        return false;
     };
 }
 
@@ -1609,12 +1881,12 @@ conditional_t::func f_has_reason()
 
 conditional_t::func f_roll_contested( const JsonObject &jo, const std::string_view member )
 {
-    std::function<double( dialogue & )> get_check = conditional_t::get_get_dbl( jo.get_object(
-                member ) );
+    dbl_or_var get_check = get_dbl_or_var( jo, member );
     dbl_or_var difficulty = get_dbl_or_var( jo, "difficulty", true );
     dbl_or_var die_size = get_dbl_or_var( jo, "die_size", false, 10 );
     return [get_check, difficulty, die_size]( dialogue & d ) {
-        return rng( 1, die_size.evaluate( d ) ) + get_check( d ) > difficulty.evaluate( d );
+        return rng( 1, die_size.evaluate( d ) ) + get_check.evaluate( d ) >
+               difficulty.evaluate( d );
     };
 }
 
@@ -1757,17 +2029,18 @@ template<class T>
 static std::function<T( const dialogue & )> get_get_str_( const JsonObject &jo,
         std::function<T( const std::string & )> ret_func )
 {
-    if( jo.get_string( "mutator" ) == "mon_faction" ) {
+    const std::string &mutator = jo.get_string( "mutator" );
+    if( mutator == "mon_faction" ) {
         str_or_var mtypeid = get_str_or_var( jo.get_member( "mtype_id" ), "mtype_id" );
         return [mtypeid, ret_func]( const dialogue & d ) {
             return ret_func( ( static_cast<mtype_id>( mtypeid.evaluate( d ) ) )->default_faction.str() );
         };
-    } else if( jo.get_string( "mutator" ) == "game_option" ) {
+    } else if( mutator == "game_option" ) {
         str_or_var option = get_str_or_var( jo.get_member( "option" ), "option" );
         return [option, ret_func]( const dialogue & d ) {
             return ret_func( get_option<std::string>( option.evaluate( d ) ) );
         };
-    } else if( jo.get_string( "mutator" ) == "valid_technique" ) {
+    } else if( mutator == "valid_technique" ) {
         std::vector<str_or_var> blacklist;
         if( jo.has_array( "blacklist" ) ) {
             for( const JsonValue &jv : jo.get_array( "blacklist" ) ) {
@@ -1788,14 +2061,15 @@ static std::function<T( const dialogue & )> get_get_str_( const JsonObject &jo,
             return ret_func( d.actor( false )->get_random_technique( *d.actor( true )->get_creature(),
                              crit, dodge_counter, block_counter, bl ).str() );
         };
-    } else if( jo.get_string( "mutator" ) == "loc_relative_u" ) {
+    } else if( mutator == "u_loc_relative" || mutator == "npc_loc_relative" ) {
         str_or_var target = get_str_or_var( jo.get_member( "target" ), "target" );
-        return [target, ret_func]( const dialogue & d ) {
-            tripoint_abs_ms char_pos = get_map().getglobal( d.actor( false )->pos() );
+        bool use_beta_talker = mutator == "npc_loc_relative";
+        return [target, use_beta_talker, ret_func]( const dialogue & d ) {
+            tripoint_abs_ms char_pos = get_map().getglobal( d.actor( use_beta_talker )->pos() );
             tripoint_abs_ms target_pos = char_pos + tripoint::from_string( target.evaluate( d ) );
             return ret_func( target_pos.to_string() );
         };
-    } else if( jo.get_string( "mutator" ) == "topic_item" ) {
+    } else if( mutator == "topic_item" ) {
         return [ret_func]( const dialogue & d ) {
             return ret_func( d.cur_item.str() );
         };
@@ -1868,571 +2142,202 @@ std::function<std::string( const dialogue & )> conditional_t::get_get_string( co
     return ret_func;
 }
 
-template<class J>
-// NOLINTNEXTLINE(readability-function-cognitive-complexity): not my problem!!
-std::function<double( dialogue & )> conditional_t::get_get_dbl( J const &jo )
+namespace
 {
-    if( jo.has_member( "const" ) ) {
-        const double const_value = jo.get_float( "const" );
-        return [const_value]( dialogue const & ) {
-            return const_value;
+std::unordered_map<std::string_view, int ( talker::* )() const> const f_get_vals = {
+    { "activity_level", &talker::get_activity_level },
+    { "age", &talker::get_age },
+    { "anger", &talker::get_anger },
+    { "bmi_permil", &talker::get_bmi_permil },
+    { "cash", &talker::cash },
+    { "difficulty", &talker::get_difficulty },
+    { "dexterity_base", &talker::get_dex_max },
+    { "dexterity_bonus", &talker::get_dex_bonus },
+    { "dexterity", &talker::dex_cur },
+    { "exp", &talker::get_kill_xp },
+    { "sleepiness", &talker::get_sleepiness },
+    { "fine_detail_vision_mod", &talker::get_fine_detail_vision_mod },
+    { "focus", &talker::focus_cur },
+    { "friendly", &talker::get_friendly },
+    { "grab_strength", &talker::get_grab_strength },
+    { "health", &talker::get_health },
+    { "height", &talker::get_height },
+    { "hunger", &talker::get_hunger },
+    { "instant_thirst", &talker::get_instant_thirst },
+    { "intelligence_base", &talker::get_int_max },
+    { "intelligence_bonus", &talker::get_int_bonus },
+    { "intelligence", &talker::int_cur },
+    { "mana_max", &talker::mana_max },
+    { "mana", &talker::mana_cur },
+    { "morale", &talker::morale_cur },
+    { "owed", &talker::debt },
+    { "perception_base", &talker::get_per_max },
+    { "perception_bonus", &talker::get_per_bonus },
+    { "perception", &talker::per_cur },
+    { "pkill", &talker::get_pkill },
+    { "pos_x", &talker::posx },
+    { "pos_y", &talker::posy },
+    { "pos_z", &talker::posz },
+    { "rad", &talker::get_rad },
+    { "size", &talker::get_size },
+    { "sleep_deprivation", &talker::get_sleep_deprivation },
+    { "sold", &talker::sold },
+    { "stamina", &talker::get_stamina },
+    { "stim", &talker::get_stim },
+    { "strength_base", &talker::get_str_max },
+    { "strength_bonus", &talker::get_str_bonus },
+    { "strength", &talker::str_cur },
+    { "thirst", &talker::get_thirst },
+    { "volume", &talker::get_volume },
+    { "weight", &talker::get_weight },
+    { "count", &talker::get_count }
+};
+} // namespace
+
+// Consider adding new, single-purpose math functions instead of feeding this monster another else-if
+std::function<double( dialogue & )> conditional_t::get_get_dbl( std::string_view checked_value,
+        char scope )
+{
+    const bool is_npc = scope == 'n';
+
+    if( auto iter = f_get_vals.find( checked_value ); iter != f_get_vals.end() ) {
+        return [is_npc, func = iter->second ]( dialogue & d ) {
+            return ( d.actor( is_npc )->*func )();
         };
-    } else if( jo.has_member( "rand" ) ) {
-        int max_value = jo.get_int( "rand" );
-        return [max_value]( dialogue const & ) {
-            return rng( 0, max_value );
+
+    } else if( checked_value == "allies" ) {
+        if( is_npc ) {
+            throw std::invalid_argument( "Can't get allies count for NPCs" );
+        }
+        return []( dialogue const & ) {
+            return static_cast<double>( g->allies().size() );
         };
-    } else if( jo.has_member( "u_val" ) || jo.has_member( "npc_val" ) ||
-               jo.has_member( "global_val" ) || jo.has_member( "context_val" ) ) {
-        const bool is_npc = jo.has_member( "npc_val" );
-        const bool is_global = jo.has_member( "global_val" );
-        const bool is_context = jo.has_member( "context_val" );
-        const std::string checked_value = is_npc ? jo.get_string( "npc_val" ) :
-                                          ( is_global ? jo.get_string( "global_val" ) : ( is_context ? jo.get_string( "context_val" ) :
-                                                  jo.get_string( "u_val" ) ) );
-        if( checked_value == "strength" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->str_cur();
-            };
-        } else if( checked_value == "dexterity" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->dex_cur();
-            };
-        } else if( checked_value == "intelligence" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->int_cur();
-            };
-        } else if( checked_value == "perception" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->per_cur();
-            };
-        } else if( checked_value == "strength_base" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_str_max();
-            };
-        } else if( checked_value == "dexterity_base" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_dex_max();
-            };
-        } else if( checked_value == "intelligence_base" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_int_max();
-            };
-        } else if( checked_value == "perception_base" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_per_max();
-            };
-        } else if( checked_value == "strength_bonus" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_str_bonus();
-            };
-        } else if( checked_value == "dexterity_bonus" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_dex_bonus();
-            };
-        } else if( checked_value == "intelligence_bonus" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_int_bonus();
-            };
-        } else if( checked_value == "perception_bonus" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_per_bonus();
-            };
-        } else if( checked_value == "dodge" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_character()->get_dodge();
-            };
-        } else if( checked_value == "var" ) {
-            var_info info( {}, {} );
-            if constexpr( std::is_same_v<JsonObject, J> ) {
-                info = read_var_info( jo );
+    } else if( checked_value == "dodge" ) {
+        return [is_npc]( dialogue const & d ) {
+            return static_cast<talker const *>( d.actor( is_npc ) )->get_character()->get_dodge();
+        };
+    } else if( checked_value == "power_percentage" ) {
+        return [is_npc]( dialogue const & d ) {
+            // Energy in milijoule
+            units::energy::value_type power_max = d.actor( is_npc )->power_max().value();
+            if( power_max == 0 ) {
+                return 0.0; //Default value if character does not have power, avoids division with 0.
             }
-            return [info]( dialogue const & d ) {
-                std::string var = read_var_value( info, d );
-                if( !var.empty() ) {
-                    // NOLINTNEXTLINE(cert-err34-c)
-                    return std::atof( var.c_str() );
-                } else if( !info.default_val.empty() ) {
-                    // NOLINTNEXTLINE(cert-err34-c)
-                    return std::atof( info.default_val.c_str() );
-                }
-                return 0.0;
-            };
-        } else if( checked_value == "allies" ) {
-            if( is_npc ) {
-                jo.throw_error( "allies count not supported for NPCs.  In " + jo.str() );
-            } else {
-                return []( dialogue const & ) {
-                    return static_cast<int>( g->allies().size() );
-                };
+            return static_cast<double>( d.actor( is_npc )->power_cur().value() * 100.0L / power_max );
+        };
+    } else if( checked_value == "mana_percentage" ) {
+        return [is_npc]( dialogue const & d ) {
+            int mana_max = d.actor( is_npc )->mana_max();
+            if( mana_max == 0 ) {
+                return 0.0; //Default value if character does not have mana, avoids division with 0.
             }
-        } else if( checked_value == "cash" ) {
-            if( is_npc ) {
-                jo.throw_error( "cash count not supported for NPCs.  In " + jo.str() );
-            } else {
-                return [is_npc]( dialogue const & d ) {
-                    return d.actor( is_npc )->cash();
-                };
-            }
-        } else if( checked_value == "owed" ) {
-            if( is_npc ) {
-                jo.throw_error( "owed amount not supported for NPCs.  In " + jo.str() );
-            } else {
-                return []( dialogue const & d ) {
-                    return d.actor( true )->debt();
-                };
-            }
-        } else if( checked_value == "sold" ) {
-            if( is_npc ) {
-                jo.throw_error( "owed amount not supported for NPCs.  In " + jo.str() );
-            } else {
-                return []( dialogue const & d ) {
-                    return d.actor( true )->sold();
-                };
-            }
-        } else if( checked_value == "pos_x" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->posx();
-            };
-        } else if( checked_value == "pos_y" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->posy();
-            };
-        } else if( checked_value == "pos_z" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->posz();
-            };
-        } else if( checked_value == "power" ) {
-            return [is_npc]( dialogue const & d ) {
-                // Energy in milijoule
-                return static_cast<int>( d.actor( is_npc )->power_cur().value() );
-            };
-        } else if( checked_value == "power_max" ) {
-            return [is_npc]( dialogue const & d ) {
-                // Energy in milijoule
-                return static_cast<int>( d.actor( is_npc )->power_max().value() );
-            };
-        } else if( checked_value == "power_percentage" ) {
-            return [is_npc]( dialogue const & d ) {
-                // Energy in milijoule
-                int power_max = d.actor( is_npc )->power_max().value();
-                if( power_max == 0 ) {
-                    return 0; //Default value if character does not have power, avoids division with 0.
-                } else {
-                    return static_cast<int>( d.actor( is_npc )->power_cur().value() * 100 ) / power_max;
-                }
-            };
-        } else if( checked_value == "morale" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->morale_cur();
-            };
-        } else if( checked_value == "focus" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->focus_cur();
-            };
-        } else if( checked_value == "mana" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->mana_cur();
-            };
-        } else if( checked_value == "mana_max" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->mana_max();
-            };
-        } else if( checked_value == "mana_percentage" ) {
-            return [is_npc]( dialogue const & d ) {
-                int mana_max = d.actor( is_npc )->mana_max();
-                if( mana_max == 0 ) {
-                    return 0; //Default value if character does not have mana, avoids division with 0.
-                } else {
-                    return ( d.actor( is_npc )->mana_cur() * 100 ) / mana_max;
-                }
-            };
-        } else if( checked_value == "hunger" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_hunger();
-            };
-        } else if( checked_value == "thirst" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_thirst();
-            };
-        } else if( checked_value == "instant_thirst" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_instant_thirst();
-            };
-        } else if( checked_value == "stored_kcal" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_stored_kcal();
-            };
-        } else if( checked_value == "stored_kcal_percentage" ) {
-            // 100% is 5 BMI's worth of kcal, which is considered healthy (this varies with height).
-            return [is_npc]( dialogue const & d ) {
-                int divisor = d.actor( is_npc )->get_healthy_kcal() / 100;
-                //if no data default to default height of 175cm
-                if( divisor == 0 ) {
-                    divisor = 118169 / 100;
-                }
-                return d.actor( is_npc )->get_stored_kcal() / divisor;
-            };
-        } else if( checked_value == "exp" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_kill_xp();
-            };
-        } else if( checked_value == "stim" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_stim();
-            };
-        } else if( checked_value == "pkill" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_pkill();
-            };
-        } else if( checked_value == "rad" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_rad();
-            };
-        } else if( checked_value == "focus" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->focus_cur();
-            };
-        } else if( checked_value == "activity_level" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_activity_level();
-            };
-        } else if( checked_value == "fatigue" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_fatigue();
-            };
-        } else if( checked_value == "stamina" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_stamina();
-            };
-        } else if( checked_value == "sleep_deprivation" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_sleep_deprivation();
-            };
-        } else if( checked_value == "anger" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_anger();
-            };
-        } else if( checked_value == "friendly" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_friendly();
-            };
-        } else if( checked_value == "age" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_age();
-            };
-        } else if( checked_value == "height" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_height();
-            };
-        } else if( checked_value == "bmi_permil" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_bmi_permil();
-            };
-        } else if( checked_value == "size" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_size();
-            };
-        } else if( checked_value == "volume" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_volume();
-            };
-        } else if( checked_value == "weight" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_weight();
-            };
-        } else if( checked_value == "grab_strength" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_grab_strength();
-            };
-        } else if( checked_value == "fine_detail_vision_mod" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_fine_detail_vision_mod();
-            };
-        } else if( checked_value == "health" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_health();
-            };
-        } else if( checked_value == "body_temp" ) {
-            return [is_npc]( dialogue const & d ) {
-                return units::to_legacy_bodypart_temp( d.actor( is_npc )->get_body_temp() );
-            };
-        } else if( checked_value == "body_temp_delta" ) {
-            return [is_npc]( dialogue const & d ) {
-                return units::to_legacy_bodypart_temp_delta( d.actor( is_npc )->get_body_temp_delta() );
-            };
-        } else if( checked_value == "npc_trust" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_npc_trust();
-            };
-        } else if( checked_value == "npc_fear" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_npc_fear();
-            };
-        } else if( checked_value == "npc_value" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_npc_value();
-            };
-        } else if( checked_value == "npc_anger" ) {
-            return [is_npc]( dialogue const & d ) {
-                return d.actor( is_npc )->get_npc_anger();
-            };
-        }
-    } else if( jo.has_array( "math" ) ) {
-        // no recursive math through shim
-        if constexpr( std::is_same_v<JsonObject, J> ) {
-            eoc_math math;
-            math.from_json( jo, "math", eoc_math::type_t::ret );
-            return [math = std::move( math )]( dialogue & d ) {
-                return math.act( d );
-            };
-        }
+            return d.actor( is_npc )->mana_cur() * 100.0 / mana_max;
+        };
+    } else if( checked_value == "body_temp" ) {
+        return [is_npc]( dialogue const & d ) {
+            return units::to_legacy_bodypart_temp( d.actor( is_npc )->get_body_temp() );
+        };
+    } else if( checked_value == "body_temp_delta" ) {
+        return [is_npc]( dialogue const & d ) {
+            return units::to_legacy_bodypart_temp_delta( d.actor( is_npc )->get_body_temp_delta() );
+        };
+    } else if( checked_value == "power" ) {
+        return [is_npc]( dialogue const & d ) {
+            // Energy in milijoule
+            return static_cast<double>( d.actor( is_npc )->power_cur().value() );
+        };
+    } else if( checked_value == "power_max" ) {
+        return [is_npc]( dialogue const & d ) {
+            // Energy in milijoule
+            return static_cast<double>( d.actor( is_npc )->power_max().value() );
+        };
     }
-    jo.throw_error( "unrecognized number source in " + jo.str() );
-    return []( dialogue const & ) {
-        return 0.0;
-    };
+
+    throw std::invalid_argument( string_format( R"(Invalid aspect "%s" for val())", checked_value ) );
 }
 
-static double handle_min_max( dialogue &d, double input, std::optional<dbl_or_var_part> min,
-                              std::optional<dbl_or_var_part> max )
+namespace
 {
-    if( min.has_value() ) {
-        double min_val = min.value().evaluate( d );
-        input = std::max( min_val, input );
-    }
-    if( max.has_value() ) {
-        double max_val = max.value().evaluate( d );
-        input = std::min( max_val, input );
-    }
-    return input;
-}
+std::unordered_map<std::string_view, void ( talker::* )( int )> const f_set_vals = {
+    { "age", &talker::set_age },
+    { "anger", &talker::set_anger },
+    { "dexterity_base", &talker::set_dex_max },
+    { "dexterity_bonus", &talker::set_dex_bonus },
+    { "exp", &talker::set_kill_xp },
+    { "sleepiness", &talker::set_sleepiness },
+    { "friendly", &talker::set_friendly },
+    { "height", &talker::set_height },
+    { "intelligence_base", &talker::set_int_max },
+    { "intelligence_bonus", &talker::set_int_bonus },
+    { "mana", &talker::set_mana_cur },
+    { "morale", &talker::set_morale },
+    { "perception_base", &talker::set_per_max },
+    { "perception_bonus", &talker::set_per_bonus },
+    { "pkill", &talker::set_pkill },
+    { "rad", &talker::set_rad },
+    { "sleep_deprivation", &talker::set_sleep_deprivation },
+    { "stamina", &talker::set_stamina },
+    { "stim", &talker::set_stim },
+    { "strength_base", &talker::set_str_max },
+    { "strength_bonus", &talker::set_str_bonus },
+    { "thirst", &talker::set_thirst },
+};
+} // namespace
 
-template <class J>
+// Consider adding new, single-purpose math functions instead of feeding this monster another else-if
 std::function<void( dialogue &, double )>
-// NOLINTNEXTLINE(readability-function-cognitive-complexity): not my problem!!
-conditional_t::get_set_dbl( const J &jo, const std::optional<dbl_or_var_part> &min,
-                            const std::optional<dbl_or_var_part> &max, bool temp_var )
+conditional_t::get_set_dbl( std::string_view checked_value, char scope )
 {
-    if( temp_var ) {
-        jo.allow_omitted_members();
-        return [min, max]( dialogue & d, double input ) {
-            write_var_value( var_type::global, "temp_var", d.actor( false ), &d,
-                             handle_min_max( d, input, min, max ) );
-        };
-    } else if( jo.has_member( "u_val" ) || jo.has_member( "npc_val" ) ||
-               jo.has_member( "global_val" ) || jo.has_member( "faction_val" ) || jo.has_member( "party_val" ) ||
-               jo.has_member( "context_val" ) ) {
-        var_type type = var_type::u;
-        std::string checked_value;
-        if( jo.has_member( "u_val" ) ) {
-            type = var_type::u;
-            checked_value = jo.get_string( "u_val" );
-        } else if( jo.has_member( "npc_val" ) ) {
-            type = var_type::npc;
-            checked_value = jo.get_string( "npc_val" );
-        } else if( jo.has_member( "global_val" ) ) {
-            type = var_type::global;
-            checked_value = jo.get_string( "global_val" );
-        } else if( jo.has_member( "var_val" ) ) {
-            type = var_type::var;
-            checked_value = jo.get_string( "var_val" );
-        } else if( jo.has_member( "context_val" ) ) {
-            type = var_type::context;
-            checked_value = jo.get_string( "context_val" );
-        } else if( jo.has_member( "faction_val" ) ) {
-            type = var_type::faction;
-            checked_value = jo.get_string( "faction_val" );
-        } else if( jo.has_member( "party_val" ) ) {
-            type = var_type::party;
-            checked_value = jo.get_string( "party_val" );
-        } else {
-            jo.throw_error( "Invalid variable type." );
-        }
+    const bool is_npc = scope == 'n';
 
-        const bool is_npc = type == var_type::npc;
-        if( checked_value == "strength_base" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_str_max( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "dexterity_base" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_dex_max( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "intelligence_base" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_int_max( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "perception_base" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_per_max( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "strength_bonus" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_str_max( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "dexterity_bonus" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_dex_max( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "intelligence_bonus" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_int_max( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "perception_bonus" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_per_max( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "var" ) {
-            dbl_or_var empty;
-            std::string var_name;
-            if constexpr( std::is_same_v<JsonObject, J> ) {
-                var_name = get_talk_varname( jo, "var_name", false, empty );
-            }
-            return [is_npc, var_name, type, min, max]( dialogue & d, double input ) {
-                write_var_value( type, var_name, d.actor( is_npc ), &d,
-                                 handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "owed" ) {
-            if( is_npc ) {
-                jo.throw_error( "owed amount not supported for NPCs.  In " + jo.str() );
-            } else {
-                return [min, max]( dialogue & d, double input ) {
-                    d.actor( true )->add_debt( handle_min_max( d, input, min, max ) - d.actor( true )->debt() );
-                };
-            }
-        } else if( checked_value == "sold" ) {
-            if( is_npc ) {
-                jo.throw_error( "sold amount not supported for NPCs.  In " + jo.str() );
-            } else {
-                return [min, max]( dialogue & d, double input ) {
-                    d.actor( true )->add_sold( handle_min_max( d, input, min, max ) - d.actor( true )->sold() );
-                };
-            }
-        } else if( checked_value == "pos_x" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_pos( tripoint( handle_min_max( d, input, min, max ),
-                                                      d.actor( is_npc )->posy(),
-                                                      d.actor( is_npc )->posz() ) );
-            };
-        } else if( checked_value == "pos_y" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_pos( tripoint( d.actor( is_npc )->posx(), handle_min_max( d, input, min,
-                                                      max ),
-                                                      d.actor( is_npc )->posz() ) );
-            };
-        } else if( checked_value == "pos_z" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_pos( tripoint( d.actor( is_npc )->posx(), d.actor( is_npc )->posy(),
-                                                      handle_min_max( d, input, min, max ) ) );
-            };
-        } else if( checked_value == "power" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                // Energy in milijoule
-                d.actor( is_npc )->set_power_cur( 1_mJ * handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "power_percentage" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                // Energy in milijoule
-                d.actor( is_npc )->set_power_cur( ( d.actor( is_npc )->power_max() * handle_min_max( d, input,
-                                                    min,
-                                                    max ) ) / 100 );
-            };
-        } else if( checked_value == "focus" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->mod_focus( handle_min_max( d, input, min,
-                                              max ) - d.actor( is_npc )->focus_cur() );
-            };
-        } else if( checked_value == "mana" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_mana_cur( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "mana_percentage" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_mana_cur( ( d.actor( is_npc )->mana_max() * handle_min_max( d, input, min,
-                                                   max ) ) / 100 );
-            };
-        } else if( checked_value == "thirst" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_thirst( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "stored_kcal" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_stored_kcal( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "stored_kcal_percentage" ) {
-            // 100% is 55'000 kcal, which is considered healthy.
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_stored_kcal( handle_min_max( d, input, min, max ) * 5500 );
-            };
-        } else if( checked_value == "stim" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_stim( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "pkill" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_pkill( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "rad" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_rad( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "fatigue" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_fatigue( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "stamina" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_stamina( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "sleep_deprivation" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_sleep_deprivation( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "anger" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_anger( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "morale" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_morale( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "friendly" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_friendly( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "exp" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_kill_xp( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "age" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_age( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "height" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_height( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "npc_trust" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_npc_trust( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "npc_fear" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_npc_fear( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "npc_value" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_npc_value( handle_min_max( d, input, min, max ) );
-            };
-        } else if( checked_value == "npc_anger" ) {
-            return [is_npc, min, max]( dialogue & d, double input ) {
-                d.actor( is_npc )->set_npc_anger( handle_min_max( d, input, min, max ) );
-            };
-        }
+    if( auto iter = f_set_vals.find( checked_value ); iter != f_set_vals.end() ) {
+        return [is_npc, func = iter->second ]( dialogue & d, double input ) {
+            ( d.actor( is_npc )->*func )( input );
+        };
+
+    } else if( checked_value == "owed" ) {
+        return [is_npc]( dialogue & d, double input ) {
+            d.actor( is_npc )->add_debt( input - d.actor( is_npc )->debt() );
+        };
+    } else if( checked_value == "sold" ) {
+        return [is_npc]( dialogue & d, double input ) {
+            d.actor( is_npc )->add_sold( input - d.actor( is_npc )->sold() );
+        };
+    } else if( checked_value == "pos_x" ) {
+        return [is_npc]( dialogue & d, double input ) {
+            tripoint const tr = d.actor( is_npc )->pos();
+            d.actor( is_npc )->set_pos( tripoint( input, tr.y, tr.z ) );
+        };
+    } else if( checked_value == "pos_y" ) {
+        return [is_npc]( dialogue & d, double input ) {
+            tripoint const tr = d.actor( is_npc )->pos();
+            d.actor( is_npc )->set_pos( tripoint( tr.x, input, tr.z ) );
+        };
+    } else if( checked_value == "pos_z" ) {
+        return [is_npc]( dialogue & d, double input ) {
+            tripoint const tr = d.actor( is_npc )->pos();
+            d.actor( is_npc )->set_pos( tripoint( tr.xy(), input ) );
+        };
+    } else if( checked_value == "power" ) {
+        return [is_npc]( dialogue & d, double input ) {
+            // Energy in milijoule
+            d.actor( is_npc )->set_power_cur( 1_mJ * input );
+        };
+    } else if( checked_value == "power_percentage" ) {
+        return [is_npc]( dialogue & d, double input ) {
+            // Energy in milijoule
+            d.actor( is_npc )->set_power_cur( ( d.actor( is_npc )->power_max() * input ) / 100 );
+        };
+    } else if( checked_value == "focus" ) {
+        return [is_npc]( dialogue & d, double input ) {
+            d.actor( is_npc )->mod_focus( input - d.actor( is_npc )->focus_cur() );
+        };
+    } else if( checked_value == "mana_percentage" ) {
+        return [is_npc]( dialogue & d, double input ) {
+            d.actor( is_npc )->set_mana_cur( ( d.actor( is_npc )->mana_max() * input ) / 100 );
+        };
     }
-    jo.throw_error( "error setting double destination in " + jo.str() );
-    return []( dialogue const &, double ) {};
+    throw std::invalid_argument( string_format( R"(Invalid aspect "%s" for val())", checked_value ) );
 }
 
 void eoc_math::_validate_type( JsonArray const &objects, type_t type_ ) const
@@ -2567,6 +2472,7 @@ std::vector<condition_parser>
 parsers = {
     {"u_has_any_trait", "npc_has_any_trait", jarg::array, &conditional_fun::f_has_any_trait },
     {"u_has_trait", "npc_has_trait", jarg::member, &conditional_fun::f_has_trait },
+    { "u_is_trait_purifiable", "npc_is_trait_purifiable", jarg::member, &conditional_fun::f_is_trait_purifiable},
     {"u_has_visible_trait", "npc_has_visible_trait", jarg::member, &conditional_fun::f_has_visible_trait },
     {"u_has_martial_art", "npc_has_martial_art", jarg::member, &conditional_fun::f_has_martial_art },
     {"u_using_martial_art", "npc_using_martial_art", jarg::member, &conditional_fun::f_using_martial_art },
@@ -2590,6 +2496,7 @@ parsers = {
     {"u_has_item", "npc_has_item", jarg::member, &conditional_fun::f_has_item },
     {"u_has_item_with_flag", "npc_has_item_with_flag", jarg::member, &conditional_fun::f_has_item_with_flag },
     {"u_has_items", "npc_has_items", jarg::member, &conditional_fun::f_has_items },
+    {"u_has_items_sum", "npc_has_items_sum", jarg::array, &conditional_fun::f_has_items_sum },
     {"u_has_item_category", "npc_has_item_category", jarg::member, &conditional_fun::f_has_item_category },
     {"u_has_bionics", "npc_has_bionics", jarg::member, &conditional_fun::f_has_bionics },
     {"u_has_any_effect", "npc_has_any_effect", jarg::array, &conditional_fun::f_has_any_effect },
@@ -2600,6 +2507,7 @@ parsers = {
     {"u_at_om_location", "npc_at_om_location", jarg::member, &conditional_fun::f_at_om_location },
     {"u_near_om_location", "npc_near_om_location", jarg::member, &conditional_fun::f_near_om_location },
     {"u_has_var", "npc_has_var", jarg::string, &conditional_fun::f_has_var },
+    { "follower_present", jarg::string, &conditional_fun::f_follower_present},
     {"expects_vars", jarg::member, &conditional_fun::f_expects_vars },
     {"npc_role_nearby", jarg::string, &conditional_fun::f_npc_role_nearby },
     {"npc_allies", jarg::member | jarg::array, &conditional_fun::f_npc_allies },
@@ -2631,12 +2539,16 @@ parsers = {
     {"is_weather", jarg::member, &conditional_fun::f_is_weather },
     {"map_terrain_with_flag", jarg::member, &conditional_fun::f_map_ter_furn_with_flag },
     {"map_furniture_with_flag", jarg::member, &conditional_fun::f_map_ter_furn_with_flag },
+    {"map_terrain_id", jarg::member, &conditional_fun::f_map_ter_furn_id },
+    {"map_furniture_id", jarg::member, &conditional_fun::f_map_ter_furn_id },
+    {"map_field_id", jarg::member, &conditional_fun::f_map_ter_furn_id },
     {"map_in_city", jarg::member, &conditional_fun::f_map_in_city },
     {"mod_is_loaded", jarg::member, &conditional_fun::f_mod_is_loaded },
     {"u_has_faction_trust", jarg::member | jarg::array, &conditional_fun::f_has_faction_trust },
     {"math", jarg::member, &conditional_fun::f_math },
     {"compare_string", jarg::member, &conditional_fun::f_compare_string },
     {"get_condition", jarg::member, &conditional_fun::f_get_condition },
+    {"test_eoc", jarg::member, &conditional_fun::f_test_eoc },
 };
 
 // When updating this, please also update `dynamic_line_string_keys` in
@@ -2647,6 +2559,7 @@ std::vector<condition_parser>
 parsers_simple = {
     {"u_male", "npc_male", &conditional_fun::f_is_male },
     {"u_female", "npc_female", &conditional_fun::f_is_female },
+    {"u_is_travelling", "npc_is_travelling", &conditional_fun::f_npc_is_travelling },
     {"has_no_assigned_mission", &conditional_fun::f_no_assigned_mission },
     {"has_assigned_mission", &conditional_fun::f_has_assigned_mission },
     {"has_many_assigned_missions", &conditional_fun::f_has_many_assigned_missions },
@@ -2691,6 +2604,7 @@ parsers_simple = {
     {"u_can_see", "npc_can_see", &conditional_fun::f_can_see },
     {"u_is_deaf", "npc_is_deaf", &conditional_fun::f_is_deaf },
     {"u_is_alive", "npc_is_alive", &conditional_fun::f_is_alive },
+    {"u_exists", "npc_exists", &conditional_fun::f_exists },
     {"u_is_avatar", "npc_is_avatar", &conditional_fun::f_is_avatar },
     {"u_is_npc", "npc_is_npc", &conditional_fun::f_is_npc },
     {"u_is_character", "npc_is_character", &conditional_fun::f_is_character },
@@ -2699,6 +2613,8 @@ parsers_simple = {
     {"u_is_furniture", "npc_is_furniture", &conditional_fun::f_is_furniture },
     {"has_ammo", &conditional_fun::f_has_ammo },
     {"player_see_u", "player_see_npc", &conditional_fun::f_player_see },
+    {"has_alpha", &conditional_fun::f_has_alpha },
+    {"has_beta", &conditional_fun::f_has_beta },
 };
 
 conditional_t::conditional_t( const JsonObject &jo )
@@ -2849,16 +2765,3 @@ const std::unordered_set<std::string> &dialogue_data::complex_conds()
     }
     return ret;
 }
-
-template std::function<double( dialogue & )>
-conditional_t::get_get_dbl<>( kwargs_shim const & );
-
-template std::function<void( dialogue &, double )>
-conditional_t::get_set_dbl<>( const kwargs_shim &,
-                              const std::optional<dbl_or_var_part> &,
-                              const std::optional<dbl_or_var_part> &, bool );
-
-template std::function<void( dialogue &, double )>
-conditional_t::get_set_dbl<>( const JsonObject &,
-                              const std::optional<dbl_or_var_part> &,
-                              const std::optional<dbl_or_var_part> &, bool );

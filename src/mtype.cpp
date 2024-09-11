@@ -69,6 +69,7 @@ mon_flag_id mon_flag_ACIDPROOF,
             mon_flag_DIGS,
             mon_flag_DOGFOOD,
             mon_flag_DORMANT,
+            mon_flag_DRACULIN_IMMUNE,
             mon_flag_GEN_DORMANT,
             mon_flag_DRIPS_GASOLINE,
             mon_flag_DRIPS_NAPALM,
@@ -118,8 +119,7 @@ mon_flag_id mon_flag_ACIDPROOF,
             mon_flag_NO_NECRO,
             mon_flag_PACIFIST,
             mon_flag_PARALYZEVENOM,
-            mon_flag_PATH_AVOID_DANGER_1,
-            mon_flag_PATH_AVOID_DANGER_2,
+            mon_flag_PATH_AVOID_DANGER,
             mon_flag_PATH_AVOID_FALL,
             mon_flag_PATH_AVOID_FIRE,
             mon_flag_PAY_BOT,
@@ -134,6 +134,7 @@ mon_flag_id mon_flag_ACIDPROOF,
             mon_flag_PUSH_VEH,
             mon_flag_QUEEN,
             mon_flag_QUIETDEATH,
+            mon_flag_QUIETMOVES,
             mon_flag_RANGED_ATTACKER,
             mon_flag_REVIVES,
             mon_flag_REVIVES_HEALTHY,
@@ -141,6 +142,7 @@ mon_flag_id mon_flag_ACIDPROOF,
             mon_flag_SEES,
             mon_flag_SHORTACIDTRAIL,
             mon_flag_SILENT_DISAPPEAR,
+            mon_flag_SILENTMOVES,
             mon_flag_SLUDGEPROOF,
             mon_flag_SLUDGETRAIL,
             mon_flag_SMALLSLUDGETRAIL,
@@ -153,7 +155,6 @@ mon_flag_id mon_flag_ACIDPROOF,
             mon_flag_SWIMS,
             mon_flag_VAMP_VIRUS,
             mon_flag_VENOM,
-            mon_flag_VERMIN,
             mon_flag_WARM,
             mon_flag_WATER_CAMOUFLAGE,
             mon_flag_WEBWALK,
@@ -192,6 +193,7 @@ void set_mon_flag_ids()
     mon_flag_DIGS = mon_flag_id( "DIGS" );
     mon_flag_DOGFOOD = mon_flag_id( "DOGFOOD" );
     mon_flag_DORMANT = mon_flag_id( "DORMANT" );
+    mon_flag_DRACULIN_IMMUNE = mon_flag_id( "DRACULIN_IMMUNE" );
     mon_flag_GEN_DORMANT = mon_flag_id( "GEN_DORMANT" );
     mon_flag_DRIPS_GASOLINE = mon_flag_id( "DRIPS_GASOLINE" );
     mon_flag_DRIPS_NAPALM = mon_flag_id( "DRIPS_NAPALM" );
@@ -241,8 +243,7 @@ void set_mon_flag_ids()
     mon_flag_NO_NECRO = mon_flag_id( "NO_NECRO" );
     mon_flag_PACIFIST = mon_flag_id( "PACIFIST" );
     mon_flag_PARALYZEVENOM = mon_flag_id( "PARALYZEVENOM" );
-    mon_flag_PATH_AVOID_DANGER_1 = mon_flag_id( "PATH_AVOID_DANGER_1" );
-    mon_flag_PATH_AVOID_DANGER_2 = mon_flag_id( "PATH_AVOID_DANGER_2" );
+    mon_flag_PATH_AVOID_DANGER = mon_flag_id( "PATH_AVOID_DANGER" );
     mon_flag_PATH_AVOID_FALL = mon_flag_id( "PATH_AVOID_FALL" );
     mon_flag_PATH_AVOID_FIRE = mon_flag_id( "PATH_AVOID_FIRE" );
     mon_flag_PAY_BOT = mon_flag_id( "PAY_BOT" );
@@ -276,7 +277,6 @@ void set_mon_flag_ids()
     mon_flag_SWIMS = mon_flag_id( "SWIMS" );
     mon_flag_VAMP_VIRUS = mon_flag_id( "VAMP_VIRUS" );
     mon_flag_VENOM = mon_flag_id( "VENOM" );
-    mon_flag_VERMIN = mon_flag_id( "VERMIN" );
     mon_flag_WARM = mon_flag_id( "WARM" );
     mon_flag_WATER_CAMOUFLAGE = mon_flag_id( "WATER_CAMOUFLAGE" );
     mon_flag_WEBWALK = mon_flag_id( "WEBWALK" );
@@ -305,8 +305,6 @@ mtype::mtype()
 
     reproduces = false;
     baby_count = -1;
-    baby_monster = mtype_id::NULL_ID();
-    baby_egg = itype_id::NULL_ID();
 
     biosignatures = false;
     biosig_item = itype_id::NULL_ID();
@@ -315,6 +313,7 @@ mtype::mtype()
     sp_defense = nullptr;
     melee_training_cap = MAX_SKILL;
     harvest = harvest_list_human;
+    decay = harvest_id::NULL_ID();
     luminance = 0;
     bash_skill = 0;
 

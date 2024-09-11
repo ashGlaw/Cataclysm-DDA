@@ -71,6 +71,8 @@ class inventory_entry
         int custom_invlet = INT_MIN;
         std::string *cached_name = nullptr;
         std::string *cached_name_full = nullptr;
+        unsigned int contents_count = 0;
+        size_t cached_denial_space = 0;
 
         inventory_entry() = default;
 
@@ -613,6 +615,7 @@ class inventory_selector
         void add_contained_gunmods( Character &you, item &gun );
         void add_contained_ebooks( item_location &container );
         void add_character_items( Character &character );
+        void add_character_ebooks( Character &character );
         void add_map_items( const tripoint &target );
         void add_vehicle_items( const tripoint &target );
         void add_nearby_items( int radius = 1 );

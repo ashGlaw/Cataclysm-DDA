@@ -310,11 +310,6 @@
     "//": "Monster dies quietly and doesn't display a message."
   },
   {
-    "id": "VERMIN",
-    "type": "monster_flag",
-    "//": "Obsolete flag labeling \"nuisance\" or \"scenery\" monsters, now used to prevent loading the same"
-  },
-  {
     "id": "NOGIB",
     "type": "monster_flag",
     "//": "Creature won't leave gibs / meat chunks when killed with huge damage"
@@ -405,14 +400,9 @@
     "//": "This monster can't be revived by necros.  It will still rise on its own."
   },
   {
-    "id": "PATH_AVOID_DANGER_1",
+    "id": "PATH_AVOID_DANGER",
     "type": "monster_flag",
     "//": "This monster will path around some dangers instead of through them"
-  },
-  {
-    "id": "PATH_AVOID_DANGER_2",
-    "type": "monster_flag",
-    "//": "This monster will path around most dangers instead of through them"
   },
   {
     "id": "PATH_AVOID_FIRE",
@@ -503,6 +493,16 @@
     "id": "LOUDMOVES",
     "type": "monster_flag",
     "//": "This monster makes move noises as if ~2 sizes louder, even if flying"
+  },
+  {
+    "id": "QUIETMOVES",
+    "type": "monster_flag",
+    "//": "This monster makes move noises as if ~2 sizes quieter"
+  },
+  {
+    "id": "SILENTMOVES",
+    "type": "monster_flag",
+    "//": "This monster makes no move noise at all"
   },
   {
     "id": "CAN_OPEN_DOORS",
@@ -628,5 +628,10 @@
     "id": "GUILT_OTHERS",
     "type": "monster_flag",
     "//": "Warning: Do not use without death_guilt function. This helps count the all the other kills that do not fit the other three (e.g blood sacrifice) before player goes numb."
+  },
+  {
+    "id": "DRACULIN_IMMUNE",
+    "type": "monster_flag",
+    "//": "Immune to Chiropteran saliva. Use for any creature with nonstandard blood (ie mi-go, insects, but probably not zombies or fungalized animals, unless they have acid blood or something)."
   }
 ]
